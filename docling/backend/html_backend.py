@@ -10,8 +10,6 @@ from pathlib import Path
 from typing import Any, Final, Iterator, Literal, Optional, Union, cast
 from urllib.parse import urlparse
 
-from bs4 import BeautifulSoup, NavigableString, PageElement, Tag
-from bs4.element import PreformattedString
 from docling_core.types.doc import (
     BoundingBox,
     CodeLanguageLabel,
@@ -61,6 +59,34 @@ from docling.utils.code_language import (
 )
 
 _log = logging.getLogger(__name__)
+
+# beautifulsoup4 is only installed by the `format-html` extra, but
+# DocumentConverter imports every backend eagerly and several backends build on
+# this one, so importing bs4 at module load would break `import docling` on
+# installs that omit the extra (the slim packages in particular). Guard the
+# import like the email/markdown/opendocument/xbrl backends do, and surface the
+# failure only when HTML is actually parsed (see HTMLDocumentBackend.__init__).
+# See https://github.com/docling-project/docling/issues/3740.
+_BS4_AVAILABLE: bool = False
+_BS4_IMPORT_ERROR: ImportError | None = None
+try:  # pragma: no cover - import-time guard
+    from bs4 import BeautifulSoup, NavigableString, PageElement, Tag
+    from bs4.element import PreformattedString
+
+    _BS4_AVAILABLE = True
+except ImportError as e:  # pragma: no cover - import-time guard
+    _BS4_IMPORT_ERROR = e
+
+    BeautifulSoup = None  # type: ignore[assignment,misc]
+    NavigableString = None  # type: ignore[assignment,misc]
+    PageElement = None  # type: ignore[assignment,misc]
+    Tag = None  # type: ignore[assignment,misc]
+    PreformattedString = None  # type: ignore[assignment,misc]
+
+_BS4_INSTALL_HINT = (
+    "The 'beautifulsoup4' package is required to parse HTML documents. "
+    "Install it with `pip install 'docling[format-html]'`."
+)
 
 # Sentinel character for explicit line breaks from <br> tags
 # Using Unicode Private Use Area to avoid conflicts with actual content
@@ -408,6 +434,8 @@ class HTMLDocumentBackend(DeclarativeDocumentBackend):
         path_or_stream: Union[BytesIO, Path],
         options: Optional[HTMLBackendOptions] = None,
     ):
+        if not _BS4_AVAILABLE:
+            raise ImportError(_BS4_INSTALL_HINT) from _BS4_IMPORT_ERROR
         if options is None:
             options = HTMLBackendOptions()
         super().__init__(in_doc, path_or_stream, options)
