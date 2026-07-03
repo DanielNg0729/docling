@@ -6,8 +6,18 @@ from tempfile import mkdtemp
 from typing import Callable, Optional
 
 import pypdfium2
-from docx.document import Document
 from PIL import Image, ImageChops
+
+# python-docx is only installed by the format-docx extra; import it behind a
+# guard so this helper module (pulled in eagerly via the docx backend) does not
+# break `import docling` when the extra is absent. ``Document`` is only used as
+# a type annotation here, and these helpers are reached only after the docx
+# backend has verified python-docx is installed.
+# See https://github.com/docling-project/docling/issues/3740.
+try:  # pragma: no cover - import-time guard
+    from docx.document import Document
+except ImportError:  # pragma: no cover - import-time guard
+    Document = None  # type: ignore[assignment,misc]
 
 
 def get_libreoffice_cmd(raise_if_unavailable: bool = False) -> Optional[str]:

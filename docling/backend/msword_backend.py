@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 import re
 import warnings
@@ -26,16 +28,6 @@ from docling_core.types.doc import (
     TableItem,
 )
 from docling_core.types.doc.document import FineRef, Formatting, Script
-from docx import Document
-from docx.document import Document as DocxDocument
-from docx.oxml.table import CT_Tc
-from docx.oxml.xmlchemy import BaseOxmlElement
-from docx.styles.style import ParagraphStyle
-from docx.table import Table, _Cell
-from docx.text.hyperlink import Hyperlink
-from docx.text.paragraph import Paragraph
-from docx.text.run import Run
-from lxml import etree
 from PIL import Image, UnidentifiedImageError
 from pydantic import AnyUrl, ValidationError
 from typing_extensions import override
@@ -51,6 +43,48 @@ from docling.datamodel.document import InputDocument
 from docling.exceptions import DocumentLoadError, SecurityError
 
 _log = logging.getLogger(__name__)
+
+# python-docx (and lxml, which it depends on) is only installed by the
+# format-docx extra, but DocumentConverter imports every backend eagerly, so
+# importing it at module load would break `import docling` on installs that omit
+# the extra (the slim packages in particular). Guard the imports like the
+# email/markdown/opendocument/xbrl backends do, and surface the failure only
+# when a DOCX document is actually parsed (see MsWordDocumentBackend.__init__).
+# See https://github.com/docling-project/docling/issues/3740.
+_DOCX_AVAILABLE: bool = False
+_DOCX_IMPORT_ERROR: ImportError | None = None
+try:  # pragma: no cover - import-time guard
+    from docx import Document
+    from docx.document import Document as DocxDocument
+    from docx.oxml.table import CT_Tc
+    from docx.oxml.xmlchemy import BaseOxmlElement
+    from docx.styles.style import ParagraphStyle
+    from docx.table import Table, _Cell
+    from docx.text.hyperlink import Hyperlink
+    from docx.text.paragraph import Paragraph
+    from docx.text.run import Run
+    from lxml import etree
+
+    _DOCX_AVAILABLE = True
+except ImportError as e:  # pragma: no cover - import-time guard
+    _DOCX_IMPORT_ERROR = e
+
+    Document = None  # type: ignore[assignment,misc]
+    DocxDocument = None  # type: ignore[assignment,misc]
+    CT_Tc = None  # type: ignore[assignment,misc]
+    BaseOxmlElement = None  # type: ignore[assignment,misc]
+    ParagraphStyle = None  # type: ignore[assignment,misc]
+    Table = None  # type: ignore[assignment,misc]
+    _Cell = None  # type: ignore[assignment,misc]
+    Hyperlink = None  # type: ignore[assignment,misc]
+    Paragraph = None  # type: ignore[assignment,misc]
+    Run = None  # type: ignore[assignment,misc]
+    etree = None  # type: ignore[assignment,misc]
+
+_DOCX_INSTALL_HINT = (
+    "The 'python-docx' package is required to parse DOCX documents. "
+    "Install it with `pip install 'docling[format-docx]'`."
+)
 
 _STRICT_OOXML_NS_PREFIX: Final[str] = "http://purl.oclc.org/ooxml/"
 _TRANSITIONAL_NS_HOST: Final[str] = "http://schemas.openxmlformats.org/"
@@ -197,7 +231,9 @@ class MsWordDocumentBackend(DeclarativeDocumentBackend):
     """Images with an area (w*h) below this are dropped as layout artifacts."""
 
     @override
-    def __init__(self, in_doc: "InputDocument", path_or_stream: BytesIO | Path) -> None:
+    def __init__(self, in_doc: InputDocument, path_or_stream: BytesIO | Path) -> None:
+        if not _DOCX_AVAILABLE:
+            raise ImportError(_DOCX_INSTALL_HINT) from _DOCX_IMPORT_ERROR
         super().__init__(in_doc, path_or_stream)
         self.XML_KEY = f"{self._W_NS_CLARK}val"
         self.xml_namespaces = {

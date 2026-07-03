@@ -13,7 +13,6 @@ from typing import Any, Iterator
 
 import lxml.etree as ET
 from lxml.etree import _Element
-from pylatexenc.latexencode import UnicodeToLatexEncoder
 
 from docling.backend.docx.latex.latex_dict import (
     ALN,
@@ -49,6 +48,25 @@ from docling.backend.docx.latex.latex_dict import (
 OMML_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/math}"
 
 _log = logging.getLogger(__name__)
+
+# pylatexenc is only used to unicode-escape text inside DOCX equations (Office
+# Math / OMML). It is not part of the format-docx extra, yet DocumentConverter
+# imports the docx backend eagerly, so importing it at module load would break
+# `import docling` whenever it is absent. Guard the import and fall back to
+# leaving equation text un-escaped rather than failing.
+# See https://github.com/docling-project/docling/issues/3740.
+try:  # pragma: no cover - import-time guard
+    from pylatexenc.latexencode import UnicodeToLatexEncoder
+except ImportError:  # pragma: no cover - import-time guard
+    UnicodeToLatexEncoder = None  # type: ignore[assignment,misc]
+
+
+class _PassthroughEncoder:
+    """Fallback used when pylatexenc is unavailable: returns text unchanged."""
+
+    @staticmethod
+    def unicode_to_latex(text: str) -> str:
+        return text
 
 
 def load(stream: Any) -> Iterator[str]:
@@ -295,11 +313,31 @@ class oMath2Latex(Tag2Method):
 
     _t_dict: dict[str, str] = T
     __direct_tags: tuple[str, ...] = ("box", "num", "den", "deg", "e")
-    u: UnicodeToLatexEncoder = UnicodeToLatexEncoder(
-        replacement_latex_protection="braces-all",
-        unknown_char_policy="keep",
-        unknown_char_warning=False,
-    )
+    _encoder: "UnicodeToLatexEncoder | _PassthroughEncoder | None" = None
+
+    @property
+    def u(self) -> "UnicodeToLatexEncoder | _PassthroughEncoder":
+        """Lazily build the (shared) unicode-to-LaTeX encoder.
+
+        Deferred so the module imports without pylatexenc; falls back to a
+        passthrough encoder (equation text left un-escaped) when it is absent.
+        """
+        cls = type(self)
+        if cls._encoder is None:
+            if UnicodeToLatexEncoder is None:
+                _log.warning(
+                    "pylatexenc is not installed; DOCX equations will not be "
+                    "unicode-escaped to LaTeX. Install it with "
+                    "`pip install pylatexenc` for full equation support."
+                )
+                cls._encoder = _PassthroughEncoder()
+            else:
+                cls._encoder = UnicodeToLatexEncoder(
+                    replacement_latex_protection="braces-all",
+                    unknown_char_policy="keep",
+                    unknown_char_warning=False,
+                )
+        return cls._encoder
 
     def __init__(self, element: _Element):
         """Initialize OMML to LaTeX converter.
