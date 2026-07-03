@@ -5,8 +5,8 @@ if TYPE_CHECKING:
     from typing import Any
 
 from docling_core.types.doc.document import DocItemLabel, DoclingDocument, NodeItem
-from pylatexenc.latexwalker import LatexMathNode
 
+from docling.backend.latex._pylatexenc import LatexMathNode
 from docling.backend.latex.constants import ENV_MATH_CLEAN, ENV_MATH_DISPLAY_PREFIXES
 
 

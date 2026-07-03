@@ -7,16 +7,17 @@ from typing import TYPE_CHECKING, Optional, Union, cast
 
 from docling_core.types.doc import DocItemLabel, DoclingDocument, NodeItem
 from docling_core.types.doc.document import Formatting
-from pylatexenc.latexwalker import (
+
+from docling.backend.abstract_backend import DeclarativeDocumentBackend
+from docling.backend.latex._pylatexenc import (
     LatexCharsNode,
     LatexEnvironmentNode,
     LatexGroupNode,
     LatexMacroNode,
     LatexMathNode,
     LatexWalker,
+    raise_if_unavailable,
 )
-
-from docling.backend.abstract_backend import DeclarativeDocumentBackend
 from docling.backend.latex.handlers.environments import EnvironmentHandlerMixin
 from docling.backend.latex.handlers.macros import MacroHandlerMixin
 from docling.backend.latex.handlers.math import MathHandlerMixin
@@ -49,6 +50,7 @@ class LatexDocumentBackend(
         path_or_stream: Union[BytesIO, Path],
         options: Optional[LatexBackendOptions] = None,
     ):
+        raise_if_unavailable()
         if options is None:
             options = LatexBackendOptions()
         super().__init__(in_doc, path_or_stream, options)

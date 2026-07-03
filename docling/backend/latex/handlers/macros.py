@@ -17,7 +17,8 @@ from docling_core.types.doc.document import (
     NodeItem,
 )
 from PIL import Image
-from pylatexenc.latexwalker import (
+
+from docling.backend.latex._pylatexenc import (
     LatexCharsNode,
     LatexEnvironmentNode,
     LatexGroupNode,
@@ -25,7 +26,6 @@ from pylatexenc.latexwalker import (
     LatexWalker,
     LatexWalkerParseError,
 )
-
 from docling.backend.latex.constants import (
     MACROS_ACCENTS,
     MACROS_CITATION,

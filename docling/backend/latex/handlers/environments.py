@@ -22,8 +22,8 @@ from docling_core.types.doc.document import (
     NodeItem,
     PictureMeta,
 )
-from pylatexenc.latexwalker import LatexEnvironmentNode, LatexMacroNode
 
+from docling.backend.latex._pylatexenc import LatexEnvironmentNode, LatexMacroNode
 from docling.backend.latex.constants import ENV_LIST, ENV_MATH, ENV_QUOTE, ENV_THEOREM
 
 _log = logging.getLogger(__name__)

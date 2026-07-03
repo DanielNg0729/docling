@@ -10,14 +10,14 @@ from docling_core.types.doc.document import (
     Formatting,
     NodeItem,
 )
-from pylatexenc.latexwalker import (
+
+from docling.backend.latex._pylatexenc import (
     LatexCharsNode,
     LatexEnvironmentNode,
     LatexGroupNode,
     LatexMacroNode,
     LatexMathNode,
 )
-
 from docling.backend.latex.constants import (
     MACROS_CITATION,
     MACROS_COLOR_INLINE,

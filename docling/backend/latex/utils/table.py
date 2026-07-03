@@ -4,14 +4,14 @@ if TYPE_CHECKING:
     from typing import Any
 
 from docling_core.types.doc.document import TableCell, TableData
-from pylatexenc.latexwalker import (
+
+from docling.backend.latex._pylatexenc import (
     LatexCharsNode,
     LatexEnvironmentNode,
     LatexMacroNode,
     LatexWalker,
     LatexWalkerParseError,
 )
-
 from docling.backend.latex.constants import (
     MACROS_ESCAPED,
     TABLE_MACROS_IGNORE,
