@@ -48,7 +48,6 @@ from xml.sax import SAXParseException
 from xml.sax.handler import ContentHandler, feature_external_ges, feature_external_pes
 from xml.sax.xmlreader import AttributesImpl
 
-from bs4 import BeautifulSoup, Tag
 from defusedxml.common import DefusedXmlException
 from defusedxml.sax import make_parser
 from docling_core.types.doc import (
@@ -70,6 +69,29 @@ from docling.datamodel.document import InputDocument
 from docling.exceptions import DocumentLoadError
 
 _log = logging.getLogger(__name__)
+
+# beautifulsoup4 is only installed by the format-html extra, but
+# DocumentConverter imports every backend eagerly, so importing it at module
+# load would break `import docling` on installs that omit the extra. Guard the
+# import and surface the failure only when a patent document is actually parsed
+# (see PatentUsptoDocumentBackend.__init__).
+# See https://github.com/docling-project/docling/issues/3740.
+_BS4_AVAILABLE: bool = False
+_BS4_IMPORT_ERROR: ImportError | None = None
+try:  # pragma: no cover - import-time guard
+    from bs4 import BeautifulSoup, Tag
+
+    _BS4_AVAILABLE = True
+except ImportError as e:  # pragma: no cover - import-time guard
+    _BS4_IMPORT_ERROR = e
+
+    BeautifulSoup = None  # type: ignore[assignment,misc]
+    Tag = None  # type: ignore[assignment,misc]
+
+_BS4_INSTALL_HINT = (
+    "The 'beautifulsoup4' package is required to parse USPTO patent XML "
+    "documents. Install it with `pip install 'docling[format-html]'`."
+)
 
 XML_DECLARATION: Final[str] = '<?xml version="1.0" encoding="UTF-8"?>'
 
@@ -95,6 +117,8 @@ class PatentHeading(Enum):
 class PatentUsptoDocumentBackend(DeclarativeDocumentBackend):
     @override
     def __init__(self, in_doc: InputDocument, path_or_stream: BytesIO | Path) -> None:
+        if not _BS4_AVAILABLE:
+            raise ImportError(_BS4_INSTALL_HINT) from _BS4_IMPORT_ERROR
         super().__init__(in_doc, path_or_stream)
 
         self.patent_content: str = ""

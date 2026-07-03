@@ -17,13 +17,14 @@ Security Note:
     external entity fetching and preventing XXE attacks.
 """
 
+from __future__ import annotations
+
 import logging
 import traceback
 from io import BytesIO
 from pathlib import Path
 from typing import Final, cast
 
-from bs4 import BeautifulSoup, NavigableString, Tag
 from docling_core.types.doc import (
     DocItemLabel,
     DoclingDocument,
@@ -35,7 +36,6 @@ from docling_core.types.doc import (
     TableData,
     TextItem,
 )
-from lxml import etree
 from typing_extensions import TypedDict, override
 
 from docling.backend.abstract_backend import DeclarativeDocumentBackend
@@ -45,6 +45,32 @@ from docling.datamodel.document import InputDocument
 from docling.exceptions import DocumentLoadError
 
 _log = logging.getLogger(__name__)
+
+# beautifulsoup4 and lxml are only installed by the format-html extra, but
+# DocumentConverter imports every backend eagerly, so importing them at module
+# load would break `import docling` on installs that omit the extra. Guard the
+# imports and surface the failure only when a JATS document is actually parsed
+# (see JatsDocumentBackend.__init__).
+# See https://github.com/docling-project/docling/issues/3740.
+_BS4_AVAILABLE: bool = False
+_BS4_IMPORT_ERROR: ImportError | None = None
+try:  # pragma: no cover - import-time guard
+    from bs4 import BeautifulSoup, NavigableString, Tag
+    from lxml import etree
+
+    _BS4_AVAILABLE = True
+except ImportError as e:  # pragma: no cover - import-time guard
+    _BS4_IMPORT_ERROR = e
+
+    BeautifulSoup = None  # type: ignore[assignment,misc]
+    NavigableString = None  # type: ignore[assignment,misc]
+    Tag = None  # type: ignore[assignment,misc]
+    etree = None  # type: ignore[assignment,misc]
+
+_BS4_INSTALL_HINT = (
+    "The 'beautifulsoup4' and 'lxml' packages are required to parse JATS XML "
+    "documents. Install them with `pip install 'docling[format-html]'`."
+)
 
 JATS_DTD_URL: Final[list[str]] = ["JATS-journalpublishing", "JATS-archive"]
 DEFAULT_HEADER_ACKNOWLEDGMENTS: Final[str] = "Acknowledgments"
@@ -108,7 +134,9 @@ class JatsDocumentBackend(DeclarativeDocumentBackend):
     """
 
     @override
-    def __init__(self, in_doc: "InputDocument", path_or_stream: BytesIO | Path) -> None:
+    def __init__(self, in_doc: InputDocument, path_or_stream: BytesIO | Path) -> None:
+        if not _BS4_AVAILABLE:
+            raise ImportError(_BS4_INSTALL_HINT) from _BS4_IMPORT_ERROR
         super().__init__(in_doc, path_or_stream)
         self.path_or_stream = path_or_stream
 
