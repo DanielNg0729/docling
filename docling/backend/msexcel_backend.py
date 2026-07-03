@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import collections
 import logging
 import posixpath
@@ -28,19 +30,6 @@ from docling_core.types.doc import (
     TableCell,
     TableData,
 )
-from lxml import etree
-from openpyxl import load_workbook
-from openpyxl.chartsheet.chartsheet import Chartsheet
-from openpyxl.drawing.image import Image
-from openpyxl.drawing.spreadsheet_drawing import (
-    OneCellAnchor,
-    SpreadsheetDrawing,
-    TwoCellAnchor,
-)
-from openpyxl.packaging.relationship import get_dependents, get_rels_path
-from openpyxl.styles import PatternFill
-from openpyxl.worksheet.worksheet import Worksheet
-from openpyxl.xml.constants import IMAGE_NS
 from PIL import Image as PILImage, UnidentifiedImageError
 from pydantic import BaseModel, Field, NonNegativeInt, PositiveInt
 from pydantic.dataclasses import dataclass
@@ -61,13 +50,59 @@ from docling.exceptions import DocumentLoadError
 
 _log = logging.getLogger(__name__)
 
+# openpyxl (and lxml, which it depends on) is only installed by the format-xlsx
+# extra, but DocumentConverter imports every backend eagerly, so importing them
+# at module load would break `import docling` on installs that omit the extra
+# (the slim packages in particular). Guard the imports and surface the failure
+# only when an XLSX document is actually parsed (see
+# MsExcelDocumentBackend.__init__).
+# See https://github.com/docling-project/docling/issues/3740.
+_XLSX_AVAILABLE: bool = False
+_XLSX_IMPORT_ERROR: ImportError | None = None
+try:  # pragma: no cover - import-time guard
+    from lxml import etree
+    from openpyxl import load_workbook
+    from openpyxl.chartsheet.chartsheet import Chartsheet
+    from openpyxl.drawing.image import Image
+    from openpyxl.drawing.spreadsheet_drawing import (
+        OneCellAnchor,
+        SpreadsheetDrawing,
+        TwoCellAnchor,
+    )
+    from openpyxl.packaging.relationship import get_dependents, get_rels_path
+    from openpyxl.styles import PatternFill
+    from openpyxl.worksheet.worksheet import Worksheet
+    from openpyxl.xml.constants import IMAGE_NS
 
-# Safe XML parser — prevents XXE, DTD-over-network, and entity-expansion attacks.
-_SAFE_XML_PARSER: Final = etree.XMLParser(
-    resolve_entities=False,
-    load_dtd=False,
-    no_network=True,
-    dtd_validation=False,
+    # Safe XML parser — prevents XXE, DTD-over-network, and entity-expansion attacks.
+    _SAFE_XML_PARSER = etree.XMLParser(
+        resolve_entities=False,
+        load_dtd=False,
+        no_network=True,
+        dtd_validation=False,
+    )
+
+    _XLSX_AVAILABLE = True
+except ImportError as e:  # pragma: no cover - import-time guard
+    _XLSX_IMPORT_ERROR = e
+
+    etree = None  # type: ignore[assignment,misc]
+    load_workbook = None  # type: ignore[assignment,misc]
+    Chartsheet = None  # type: ignore[assignment,misc]
+    Image = None  # type: ignore[assignment,misc]
+    OneCellAnchor = None  # type: ignore[assignment,misc]
+    SpreadsheetDrawing = None  # type: ignore[assignment,misc]
+    TwoCellAnchor = None  # type: ignore[assignment,misc]
+    get_dependents = None  # type: ignore[assignment,misc]
+    get_rels_path = None  # type: ignore[assignment,misc]
+    PatternFill = None  # type: ignore[assignment,misc]
+    Worksheet = None  # type: ignore[assignment,misc]
+    IMAGE_NS = None  # type: ignore[assignment,misc]
+    _SAFE_XML_PARSER = None  # type: ignore[assignment,misc]
+
+_XLSX_INSTALL_HINT = (
+    "The 'openpyxl' package is required to parse XLSX documents. "
+    "Install it with `pip install 'docling[format-xlsx]'`."
 )
 
 
@@ -172,7 +207,7 @@ class MsExcelDocumentBackend(DeclarativeDocumentBackend, PaginatedDocumentBacken
     @override
     def __init__(
         self,
-        in_doc: "InputDocument",
+        in_doc: InputDocument,
         path_or_stream: BytesIO | Path,
         options: MsExcelBackendOptions | None = None,
     ) -> None:
@@ -186,6 +221,8 @@ class MsExcelDocumentBackend(DeclarativeDocumentBackend, PaginatedDocumentBacken
         Raises:
             RuntimeError: An error occurred parsing the file.
         """
+        if not _XLSX_AVAILABLE:
+            raise ImportError(_XLSX_INSTALL_HINT) from _XLSX_IMPORT_ERROR
         if options is None:
             options = MsExcelBackendOptions()
         super().__init__(in_doc, path_or_stream, options)
